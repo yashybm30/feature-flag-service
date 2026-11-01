@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: local-development-only
+      POSTGRES_DB: portfolio
+    ports: ["127.0.0.1:55432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d portfolio"]
+      interval: 2s
+      timeout: 1s
+      retries: 30
+  migrate:
+    build: .
+    command: ["node", "dist/migrate.js"]
+    environment:
+      DATABASE_URL: postgresql://postgres:local-development-only@postgres:5432/portfolio
+    depends_on:
+      postgres:
+        condition: service_healthy
+  redis:
+    image: redis:7-alpine
+    ports: ["127.0.0.1:6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 1s
+      retries: 30
+  app:
+    build: .
+    ports: ["3000:3000"]
+    environment:
+      DATABASE_URL: postgresql://postgres:local-development-only@postgres:5432/portfolio
+      REDIS_URL: redis://redis:6379
+      PLATFORM_ADMIN_SUB: ${PLATFORM_ADMIN_SUB:-}
+      JWT_SECRET: ${JWT_SECRET:?Set a random JWT_SECRET of at least 48 characters}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
